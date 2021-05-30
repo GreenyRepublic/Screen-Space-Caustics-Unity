@@ -1,5 +1,7 @@
 # Screen Space Caustics
- Screen space caustic rendering implemented in Unity's standard render pipeline. Based on my 2018 master's thesis - '_Advancing Real-Time Global Illumination in Screen-Space_'.
+ Screen space caustic rendering implemented in Unity's standard render pipeline. Based on my 2018 master's thesis - [_Advancing Real-Time Global Illumination in Screen-Space_](https://mega.nz/file/TgIwVZLK#DVKZM9sLtvk3nYt2RG0hwhmzHfC2vW3Aa49xUroXgpk)
+ 
+ 
  
 # Done
 - Caustics rendering
