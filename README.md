@@ -8,7 +8,9 @@
 # To-Do
 - Implement importance sampling for caustics
 - Improve blur
-- Modify blur and caustic sampling based on camera distance
+- Modulate blur and caustic sampling based on camera distance
+- Improve random number generation
+- Build a more interesting scene?
 
 ---
 
