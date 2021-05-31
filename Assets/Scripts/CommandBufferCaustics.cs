@@ -16,7 +16,7 @@ public class CommandBufferCaustics : MonoBehaviour
 
     [Range(0, 128)]
     public int m_CausticSampleCount;
-    [Range(0, 256)]
+    [Range(0, 512)]
     public int m_CausticSampleDistance;
     [Range(0, MAX_BLUR_KERNEL_RADIUS)]
     public int m_GaussKernelRadius;
@@ -24,7 +24,7 @@ public class CommandBufferCaustics : MonoBehaviour
     public float m_GaussDeviation;
 
     private Camera m_Camera;
-    public RenderTexture m_OutputTexture;
+    private RenderTexture m_OutputTexture;
 
     private Material m_CausticsMaterial;
     private Material m_BlurMaterial;
@@ -63,10 +63,12 @@ public class CommandBufferCaustics : MonoBehaviour
         m_CausticsMaterial = new Material(m_CausticsShader);
         m_BlurMaterial = new Material(m_BlurShader);
         m_ApplyMaterial = new Material(m_ApplyShader);
-
-        Camera.main.depthTextureMode = DepthTextureMode.DepthNormals;
+        
         m_RandomSeed = new Vector4();
         m_GaussKernel = new float[MAX_BLUR_KERNEL_RADIUS];
+
+        Camera.main.depthTextureMode = DepthTextureMode.DepthNormals;
+        m_OutputTexture = new RenderTexture(Camera.main.pixelWidth, Camera.main.pixelHeight, 1);
 
         UpdateRandomSeed();
         PopulateGaussianKernel(m_GaussKernelRadius);
