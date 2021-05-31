@@ -1,5 +1,5 @@
 # Screen Space Caustics
- Screen space caustic rendering implemented in Unity's standard render pipeline. Based on my 2018 master's thesis - [_Advancing Real-Time Global Illumination in Screen-Space_](https://mega.nz/file/TgIwVZLK#DVKZM9sLtvk3nYt2RG0hwhmzHfC2vW3Aa49xUroXgpk)
+ Screen space caustic rendering implemented in Unity's standard render pipeline. Based on my 2018 master's thesis - **[_Advancing Real-Time Global Illumination in Screen-Space_](https://mega.nz/file/TgIwVZLK#DVKZM9sLtvk3nYt2RG0hwhmzHfC2vW3Aa49xUroXgpk)**
  
 # How-To
 This Unity project comes with a basic scene _FlatPlane_, in this scene you will find...
@@ -12,7 +12,10 @@ An RTS-like camera, attached to this is the **CausticsEffect** object. On this o
 - **Gauss Deviation** - The standard deviation for the gaussian filter - gaussian weights are generated at the start of runtime based on this value.
 
 ## Collonade, Uffizi, Metro, Kitchen ## 
-All these objects contain identical geometry, and feature one of four different reflection probes with different cubemaps attached. Enable one (and disable the others) to see the effects of different lighting conditions on the caustic patterns.
+A selection of light probes with different cubemaps attached - turn these on and off and look at how the caustic effects change!
+
+## Geometry ##
+At the moment the only geometry in the scene is a matte plane (roughness = 1.0) and two different kinds of ring in a little pile. This demonstrates the 'cardioid' caustic pattern quite nicely, and I plan to add a more complete game scene as a demonstration later.
  
 # Done
 - Caustics rendering
