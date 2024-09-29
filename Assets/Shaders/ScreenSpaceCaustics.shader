@@ -1,7 +1,6 @@
 
-Shader "Hidden/ScreenSpaceCaustics"
+Shader "ScreenSpaceCaustics"
 {
-    // It's GreenyRepublic's caustic shader test!
     Properties
     {
     }
@@ -23,6 +22,8 @@ Shader "Hidden/ScreenSpaceCaustics"
             #include "UnityStandardUtils.cginc"
             #include "./cginc/Halton.cginc"
             #include "cginc/WorldSpaceBufferTools.cginc"
+
+            #define SPEC_THRESHOLD 0.5f
 
             struct appdata
             {
@@ -113,8 +114,8 @@ Shader "Hidden/ScreenSpaceCaustics"
             float4 _RandomSeed;
             bool _LightDirectional; // is light directional? light is point light if false
             float _CausticStrength;
-            uint _SampleCount;
-            uint _SampleDistance;
+            int _SampleCount;
+            int _SampleDistance;
             float4 _LightPosition;
             float4 _LightColour;
 
@@ -134,6 +135,7 @@ Shader "Hidden/ScreenSpaceCaustics"
                     i.uv.x * _ScreenParams.x,
                     i.uv.y * _ScreenParams.y);
 
+
                 float2 nrs = float2(i.uv.x * _ScreenParams.x * _RandomSeed.x, i.uv.y * _ScreenParams.y * _RandomSeed.y) ;
 
                 float4 receiverPosition = DecodeWorldSpace(tex2D(_WorldPositionDepthTexture, i.uv));
@@ -148,19 +150,30 @@ Shader "Hidden/ScreenSpaceCaustics"
                     return receivedRadiance;
                 }
 
+                float2 screenLine = normalize(mul(receiverNormal, unity_CameraProjection).xy);
+                float angleOffset = 0.5 * (-dot(screenLine, float2(0.0, 1.0)) + 1.0) * sign(dot(screenLine, float2(-1.0, 0.0)));
+
                 float3 cameraRay = receiverPosition.xyz - _WorldSpaceCameraPos.xyz;
                 float3 normCameraRay = normalize(cameraRay.xyz);
                 float contributingSamples = 0.0f;
 
-
+                //  Unity complains if we don't have this for BRDF calcs
+                //
                 UnityIndirect gi;
                 gi.diffuse = float3(0,0,0);
                 gi.specular = float3(0,0,0);
+                   
+                //  Scale our sampling distance by the camera distance
+                //
+                _SampleDistance = _SampleDistance * (1/length(cameraRay));
 
                 [unroll(64)]
                 for (int smp = 0; smp < _SampleCount; ++smp)
                 {
-                    float sampleAngle = rand_2_10(i.uv.xy * (smp + 1)) * UNITY_TWO_PI;
+                    float angleRandomFactor = rand_2_10(i.uv.xy * (smp + 1));
+                    float sampleAngle = (angleRandomFactor + angleOffset) * UNITY_PI;
+
+                    float distanceScale = abs(angleRandomFactor - 0.5) / 0.5;
                     float sampleDistance = rand_2_10(i.uv.xy * (smp+3)) * _SampleDistance;
 
                     float4 sampleCoord = float4(i.uv.xy, 0,0) + 
@@ -179,7 +192,7 @@ Shader "Hidden/ScreenSpaceCaustics"
                         continue;
                     }
 
-                    if (SpecularStrength(senderSpecular.xyz) < 0.5f)
+                    if (SpecularStrength(senderSpecular.xyz) < SPEC_THRESHOLD)
                     {
                         continue;
                     }
@@ -187,6 +200,7 @@ Shader "Hidden/ScreenSpaceCaustics"
                     float3 receiverToSender = senderPosition.xyz - receiverPosition.xyz;
                     float distanceFalloffSquared = max(dot(receiverToSender, receiverToSender), 1.0f);
                     receiverToSender = normalize(receiverToSender);
+
                     float3 correctedReceiverNormal = normalize(receiverNormal.xyz - float3(0.5,0.5,0.5));
                     float3 correctedSenderNormal = normalize(senderNormal.xyz - float3(0.5, 0.5, 0.5));
 
@@ -198,7 +212,7 @@ Shader "Hidden/ScreenSpaceCaustics"
                     float3 reflectedRay = normalize(reflect(-receiverToSender, correctedSenderNormal));
                     half4 skyData = UNITY_SAMPLE_TEXCUBE(unity_SpecCube0, -reflectedRay);
                     half3 skyColour = DecodeHDR(skyData, unity_SpecCube0_HDR);
-                    
+                   
                     UnityLight light;
                     light.color = skyColour.xyz;
                     light.dir = -reflectedRay;

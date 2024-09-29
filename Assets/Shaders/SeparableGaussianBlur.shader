@@ -6,8 +6,7 @@ Shader "Hidden/SeparableGaussianBlur"
 
     Properties
     {
-        _MainTex ("Texture", 2D) = "white" {}
-        _KernelSize("Blur Kernel Size", Range(0,31)) = 0.0
+        [HideInInspector]_MainTex ("Texture", 2D) = "white" {}
     }
     SubShader
     {

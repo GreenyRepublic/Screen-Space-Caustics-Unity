@@ -4,7 +4,6 @@ Shader "Hidden/ApplyCaustics"
 
     Properties
     {
-        _MainTex ("Texture", 2D) = "white" {}
     }
     SubShader
     {
@@ -13,6 +12,8 @@ Shader "Hidden/ApplyCaustics"
 
         Pass
         {
+            Blend OneMinusDstColor One // Soft additive
+
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
@@ -39,17 +40,15 @@ Shader "Hidden/ApplyCaustics"
                 return o;
             }
 
-            sampler2D _MainTex;
             sampler2D _CameraGBufferTexture0; // Diffuse color (RGB), occlusion (A)
             sampler2D _CausticsBuffer;
 
             fixed4 frag (v2f i) : SV_Target
             {
-                fixed4 cameraColour = tex2D(_MainTex, i.uv);
                 fixed4 causticValue = tex2D(_CausticsBuffer, i.uv);
                 fixed4 diffuseValue = tex2D(_CameraGBufferTexture0, i.uv);
 
-                return cameraColour + (causticValue * diffuseValue);
+                return causticValue;
             }
             ENDCG
         }
