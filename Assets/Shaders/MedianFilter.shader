@@ -1,11 +1,11 @@
 // Upgrade NOTE: replaced 'mul(UNITY_MATRIX_MVP,*)' with 'UnityObjectToClipPos(*)'
 
-Shader "Hidden/MedianFilter"
+Shader "SSCaustics/MedianFilter"
 {
 
 Properties
 {
-    _MainTex ("-", 2D) = "black"
+    [HideInInspector]_MainTex ("Texture", 2D) = "white" {}
 }
 
 CGINCLUDE

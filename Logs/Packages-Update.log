@@ -26,3 +26,22 @@ The following packages were updated:
   com.unity.test-framework from version 1.1.24 to 1.1.33
   com.unity.textmeshpro from version 3.0.4 to 3.0.7
   com.unity.timeline from version 1.5.4 to 1.7.6
+
+=== Tue Oct 22 14:59:20 2024
+
+Packages were changed.
+Update Mode: updateDependencies
+
+The following packages were added:
+  com.unity.modules.accessibility@1.0.0
+  com.unity.multiplayer.center@1.0.0
+The following packages were updated:
+  com.unity.ai.navigation from version 1.1.5 to 2.0.4
+  com.unity.collab-proxy from version 2.5.1 to 2.5.2
+  com.unity.recorder from version 4.0.3 to 5.1.1
+  com.unity.render-pipelines.universal from version 14.0.11 to 17.0.3
+  com.unity.test-framework from version 1.1.33 to 1.4.5
+  com.unity.timeline from version 1.7.6 to 1.8.7
+  com.unity.ugui from version 1.0.0 to 2.0.0
+The following packages were removed:
+  com.unity.textmeshpro@3.0.7

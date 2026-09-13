@@ -1,4 +1,4 @@
-Shader "Hidden/SeparableGaussianBlur"
+Shader "SSCaustics/SeparableGaussianBlur"
 {
     // Implements a separable gaussian blur with geometry awareness
     // I.e. won't blur across large changes in normal, position, etc.

@@ -1,8 +1,11 @@
 
-Shader "ScreenSpaceCaustics"
+Shader "SSCaustics/ScreenSpaceCaustics"
 {
     Properties
     {
+        _SamplesPerPixel ("Samples per Pixel", Integer) = 8
+        _SampleDistance ("Sample Distance", Integer) = 128
+        _CausticStrength ("Brightness Multiplier", Float) = 1.0
     }
     SubShader
     {
@@ -13,17 +16,16 @@ Shader "ScreenSpaceCaustics"
 
         Pass
         {
-            CGPROGRAM
+            HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
-
-            #include "UnityStandardBRDF.cginc"
-            #include "UnityCG.cginc"
-            #include "UnityStandardUtils.cginc"
-            #include "./cginc/Halton.cginc"
-            #include "cginc/WorldSpaceBufferTools.cginc"
-
-            #define SPEC_THRESHOLD 0.5f
+            
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/UnityGBuffer.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
+            
+            #define SPEC_THRESHOLD 0.9f
 
             struct appdata
             {
@@ -40,7 +42,8 @@ Shader "ScreenSpaceCaustics"
             v2f vert (appdata v)
             {
                 v2f o;
-                o.vertex = UnityObjectToClipPos(v.vertex);
+                VertexPositionInputs vertexInput = GetVertexPositionInputs(v.vertex.xyz);
+                o.vertex = vertexInput.positionCS;
                 o.uv = v.uv;
 
                 return o;
@@ -65,8 +68,8 @@ Shader "ScreenSpaceCaustics"
                     );
             }
 
-            //As presented in Hachisuka's 2012 paper on GPU-accelerated photon mapping
-            //Originally taken from an anonymous forum post on GPGPU.
+            //  As presented in Hachisuka's 2012 paper on GPU-accelerated photon mapping
+            //  Originally taken from an anonymous forum post on GPGPU.com (weird right?)
             float GPURnd(inout float4 state)
             {
                 const float4 q = float4(1225.0, 1585.0, 2457.0, 2098.0);
@@ -114,20 +117,17 @@ Shader "ScreenSpaceCaustics"
             float4 _RandomSeed;
             bool _LightDirectional; // is light directional? light is point light if false
             float _CausticStrength;
-            int _SampleCount;
+            int _SamplesPerPixel;
             int _SampleDistance;
             float4 _LightPosition;
             float4 _LightColour;
 
-            sampler2D _CameraGBufferTexture0; // Diffuse color (RGB), occlusion (A)
-            sampler2D _CameraGBufferTexture1; // Specular color (RGB), roughness(A).
-            sampler2D _CameraGBufferTexture2; // World space normal (RGB), unused (A).
-            sampler2D _CameraGBufferTexture3; // Emission + lighting + lightmaps + reflection probes buffer
-            sampler2D _CameraGBufferTexture4; // Depth + stencil
-            sampler2D _WorldPositionDepthTexture; // position (xyz), depth (w) (YESYES)
-            sampler2D _CameraDepthTexture;
+            sampler2D _GBuffer0; // Diffuse color (RGB), Material Flags (A)
+            sampler2D _GBuffer1; // Metallic (RGB), Occlusion(A).
+            sampler2D _GBuffer2; // World space normal (RGB), Smoothness (A).
+            sampler2D _GBuffer3; // Emission + lighting + lightmaps + reflection probes buffer
 
-            fixed4 frag(v2f i) : SV_Target
+            float4 frag(v2f i) : SV_Target
             {
                 float4 randState = float4(
                     i.uv.y * _ScreenParams.y,
@@ -138,104 +138,105 @@ Shader "ScreenSpaceCaustics"
 
                 float2 nrs = float2(i.uv.x * _ScreenParams.x * _RandomSeed.x, i.uv.y * _ScreenParams.y * _RandomSeed.y) ;
 
-                float4 receiverPosition = DecodeWorldSpace(tex2D(_WorldPositionDepthTexture, i.uv));
-                float4 receiverDiffuse = tex2D(_CameraGBufferTexture0, i.uv);
-                float4 receiverSpecularSmoothness = tex2D(_CameraGBufferTexture1, i.uv);
-                float4 receiverNormal = tex2D(_CameraGBufferTexture2, i.uv);
-
+                
+                float receiverDepth = SampleSceneDepth(i.uv.xy);
+                float4 receiverDiffuse = tex2D(_GBuffer0, i.uv.xy);
+                float4 receiverSpecular = tex2D(_GBuffer1, i.uv.xy);
+                float4 receiverNormal = tex2D(_GBuffer2, i.uv.xy);
+                float3 receiverPosition = ComputeWorldSpacePosition(i.uv.xy, receiverDepth, unity_MatrixInvVP);
+                
                 float4 receivedRadiance = float4(0, 0, 0, 0);
 
-                if (receiverDiffuse.a == 0.0f || length(receiverDiffuse.rgb) < 0.1f)
-                {
-                    return receivedRadiance;
-                }
-
-                float2 screenLine = normalize(mul(receiverNormal, unity_CameraProjection).xy);
-                float angleOffset = 0.5 * (-dot(screenLine, float2(0.0, 1.0)) + 1.0) * sign(dot(screenLine, float2(-1.0, 0.0)));
-
-                float3 cameraRay = receiverPosition.xyz - _WorldSpaceCameraPos.xyz;
-                float3 normCameraRay = normalize(cameraRay.xyz);
+                float3 cameraRay = receiverPosition.xyz - GetCameraPositionWS().xyz;
+                float3 normCameraRay = SafeNormalize(cameraRay.xyz);
                 float contributingSamples = 0.0f;
-
-                //  Unity complains if we don't have this for BRDF calcs
-                //
-                UnityIndirect gi;
-                gi.diffuse = float3(0,0,0);
-                gi.specular = float3(0,0,0);
+                
+                BRDFData receiverBRDF = BRDFDataFromGbuffer(receiverDiffuse, receiverSpecular, receiverNormal);
                    
                 //  Scale our sampling distance by the camera distance
                 //
                 _SampleDistance = _SampleDistance * (1/length(cameraRay));
 
                 [unroll(64)]
-                for (int smp = 0; smp < _SampleCount; ++smp)
+                for (int smp = 0; smp < _SamplesPerPixel; ++smp)
                 {
-                    float angleRandomFactor = rand_2_10(i.uv.xy * (smp + 1));
-                    float sampleAngle = (angleRandomFactor + angleOffset) * UNITY_PI;
+                    //  Generate a random vector in the unit sphere, invert it if it's in the wrong half-space
+                    //float angleRandomFactor = halton(2, smp + 1) + (0.3 * rand_2_10(i.uv.xy * (smp + 1)));
 
-                    float distanceScale = abs(angleRandomFactor - 0.5) / 0.5;
-                    float sampleDistance = rand_2_10(i.uv.xy * (smp+3)) * _SampleDistance;
+                    float rand1 = rand_2_10(i.uv.xy * (smp + 1));
+                    float rand2 = rand_2_10(i.uv.yx * (smp + 2));
+                    float rand3 = rand_2_10(i.uv.xy * (smp + 5));
 
-                    float4 sampleCoord = float4(i.uv.xy, 0,0) + 
-                        float4((sampleDistance * cos(sampleAngle)) / _ScreenParams.x
-                        , (sampleDistance * sin(sampleAngle)) / _ScreenParams.y
-                        , 0 , 0);
+                    float3 sampleVecWS = normalize(float3(rand1, rand2, rand3));
+                    if (dot(sampleVecWS,receiverNormal) < 0.0f)
+                    {
+                        sampleVecWS *= -1;
+                    }
+                    float2 sampleVecCS = normalize(TransformWorldToHClip(sampleVecWS).xy);
+                    
+                    float distanceRandomFactor = rand_2_10(i.uv.yx * (smp+7));
+                    float sampleDistance = sqrt(distanceRandomFactor) * _SampleDistance;
+                    float2 sampleOffset = sampleVecCS * (sampleDistance/_ScreenParams.x);
+                    
+                    float4 sampleCoord = float4(i.uv.xy + sampleOffset, 0, 1);
 
-
-                    float4 senderPosition = DecodeWorldSpace(tex2Dlod(_WorldPositionDepthTexture, sampleCoord));
-                    float4 senderDiffuse = tex2Dlod(_CameraGBufferTexture0, sampleCoord);
-                    float4 senderSpecular = tex2Dlod(_CameraGBufferTexture1, sampleCoord);
-                    float4 senderNormal = tex2Dlod(_CameraGBufferTexture2, sampleCoord);
-
-                    if (senderDiffuse.a == 0.0f)
+                    float3 senderPosition = ComputeWorldSpacePosition(sampleCoord, receiverDepth, unity_MatrixInvVP);
+                    float4 senderDiffuse = tex2Dlod(_GBuffer0, sampleCoord);
+                    float4 senderSpecular = tex2Dlod(_GBuffer1, sampleCoord);
+                    float4 senderNormal = tex2Dlod(_GBuffer2, sampleCoord);
+                    
+                    float senderSmoothness = senderNormal.a;
+                    
+                    if (senderSmoothness < SPEC_THRESHOLD)
                     {
                         continue;
                     }
-
-                    if (SpecularStrength(senderSpecular.xyz) < SPEC_THRESHOLD)
-                    {
-                        continue;
-                    }
-
+                    
                     float3 receiverToSender = senderPosition.xyz - receiverPosition.xyz;
-                    float distanceFalloffSquared = max(dot(receiverToSender, receiverToSender), 1.0f);
+                    float distanceSquared = max(length(receiverToSender) * length(receiverToSender), 1.0f);
                     receiverToSender = normalize(receiverToSender);
 
-                    float3 correctedReceiverNormal = normalize(receiverNormal.xyz - float3(0.5,0.5,0.5));
-                    float3 correctedSenderNormal = normalize(senderNormal.xyz - float3(0.5, 0.5, 0.5));
+                    float3 correctedReceiverNormal = SafeNormalize(receiverNormal.xyz);
+                    float3 correctedSenderNormal = SafeNormalize(senderNormal.xyz);
 
                     if (dot(receiverToSender, correctedSenderNormal) >= 0.0f)
                     {
                         continue;
                     }
+                    
+                    float3 reflectedRay = SafeNormalize(reflect(-receiverToSender, correctedSenderNormal));
+                    
+                    BRDFData senderBRDF = BRDFDataFromGbuffer(senderDiffuse, senderSpecular, senderNormal);
+                    //half3 IBLIrradiance = CalculateIrradianceFromReflectionProbes(reflectedRay, senderPosition, senderBRDF.perceptualRoughness);
 
-                    float3 reflectedRay = normalize(reflect(-receiverToSender, correctedSenderNormal));
-                    half4 skyData = UNITY_SAMPLE_TEXCUBE(unity_SpecCube0, -reflectedRay);
-                    half3 skyColour = DecodeHDR(skyData, unity_SpecCube0_HDR);
-                   
-                    UnityLight light;
-                    light.color = skyColour.xyz;
-                    light.dir = -reflectedRay;
-
-                    float4 incomingRadiance = BRDF1_Unity_PBS(
-                        senderDiffuse.xyz,
-                        senderSpecular.xyz,
-                        1.0f - SpecularStrength(senderSpecular.rgb),
-                        1.0f - senderSpecular.w,
-                        correctedSenderNormal.xyz,
+                    half3 IBLIrradiance = (half3)0;
+                    float3 incomingRadiance = LightingPhysicallyBased(
+                        senderBRDF, 
+                        IBLIrradiance, 
+                        normalize(reflectedRay), 
+                        1.0f/distanceSquared, 
+                        correctedSenderNormal, 
                         normalize(-receiverToSender),
-                        light,
-                        gi
-                    );
-                    float lambertianTerm = dot(normalize(receiverToSender), normalize(correctedReceiverNormal.xyz));
-                    receivedRadiance += incomingRadiance * lambertianTerm * (1.0 / distanceFalloffSquared);
+                        false);
+
+                    float3 outgoingRadiance = LightingPhysicallyBased(
+                        receiverBRDF, 
+                        incomingRadiance, 
+                        normalize(receiverToSender), 
+                        1.0f, 
+                        correctedReceiverNormal, 
+                        -normCameraRay,
+                        false);
+
+                    receivedRadiance.xyz += outgoingRadiance;
                     contributingSamples += 1.0f;
+                    
                 }
                 receivedRadiance.xyz /= contributingSamples;
                 receivedRadiance.a = 1;
                 return receivedRadiance * _CausticStrength;
             }
-            ENDCG
+            ENDHLSL
         }
     }
 }

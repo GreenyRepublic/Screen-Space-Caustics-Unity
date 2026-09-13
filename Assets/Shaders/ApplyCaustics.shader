@@ -1,4 +1,4 @@
-Shader "Hidden/ApplyCaustics"
+Shader "SSCaustics/ApplyCaustics"
 {
     // Applies caustics - samples from the stored texture, multiples by the diffuse gbuffer and adds to the input camera buffer
 
